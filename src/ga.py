@@ -5,54 +5,60 @@ import csv
 import os
 
 class DeapSeaGa:
-    def __init__(self, objective, BOUNDS, NPOP=10, CXPB=0.5, MUTPB=0.2, NGEN=40, ELITES_SIZE=1, PATIENCE=None, TOL=1e-3, NWORKERS=1, csv_path=None):
+    def __init__(self, objective, BOUNDS, BITS, NPOP=10, CXPB=0.5, MUTPB=0.2, NGEN=40, ELITES_SIZE=1, TOURNAMENT_SIZE = 3, PATIENCE=None, TOL=1e-3, NWORKERS=1, csv_path=None):
         self.objective = objective
         self.BOUNDS = BOUNDS
+        self.BITS = BITS
         self.CXPB = CXPB
         self.MUTPB = MUTPB
         self.NGEN = NGEN
         self.NPOP = NPOP
         self.ELITES_SIZE = ELITES_SIZE
+        self.TOURNAMENT_SIZE = TOURNAMENT_SIZE
         self.PATIENCE = PATIENCE
         self.TOL = TOL
         self.NWORKERS = NWORKERS
         self.csv_path = csv_path
         self.build_toolbox()
 
+    def decode(self, ind):
+        decoded = {}
+        cursor = 0
+        for key in self.BOUNDS.keys():
+            b = self.BITS[key]
+            bit_slice = ind[cursor:cursor + b]
+            cursor += b
+            intval = int("".join(str(x) for x in bit_slice), 2)
+            max_int = 2**b - 1
+            low, high = self.BOUNDS[key]
+            val = low + (high - low) * intval / max_int
+            decoded[key] = val
+        return decoded
+
+    def wrapped_objective(self, bit_ind):
+        float_ind = self.decode(bit_ind)
+        return self.objective(float_ind)
+
     def build_toolbox(self):
         creator.create("f", base.Fitness, weights=(-1.0,))
-        creator.create("Individual", dict, fitness=creator.f)
+        creator.create("Individual", list, fitness=creator.f)
+        total_bits = sum(self.BITS.values())
         self.toolbox = base.Toolbox()
-        def gen_params():
-            return {key: random.uniform(*bounds) for key, bounds in self.BOUNDS.items()}
-        self.toolbox.register("individual", tools.initIterate, creator.Individual, gen_params)
+        def gen_bits():
+            return [random.randint(0, 1) for _ in range(sum(self.BITS.values()))]
+        self.toolbox.register("individual", tools.initIterate, creator.Individual, gen_bits)
         self.toolbox.register("population", tools.initRepeat, list, self.toolbox.individual)
 
-        def mate_dict(ind1, ind2):
-            keys = list(ind1.keys())
-            k = random.randint(1, len(keys))
-            keys_to_swap = random.sample(keys, k)
-            for key in keys_to_swap:
-                ind1[key], ind2[key] = ind2[key], ind1[key]
-            return ind1, ind2
-
-        # Mutation for dicts: randomly change one value
-        def mutate_dict(ind):
-            key = random.choice(list(ind.keys()))
-            ind[key] = random.uniform(*self.BOUNDS[key])
-            return ind,
-
-        self.toolbox.register("evaluate", self.objective)
-        self.toolbox.register("mate", mate_dict)          # works on dicts by converting to list of items
-        self.toolbox.register("mutate", mutate_dict)
-        self.toolbox.register("select", tools.selTournament, tournsize=3)
+        self.toolbox.register("evaluate", self.wrapped_objective)
+        self.toolbox.register("mate", tools.cxTwoPoint)
+        self.toolbox.register("mutate", tools.mutFlipBit, indpb=1.0/total_bits)
+        self.toolbox.register("select", tools.selTournament, tournsize=self.TOURNAMENT_SIZE)
 
         if self.NWORKERS > 1:
             self.pool = ThreadPoolExecutor(max_workers=self.NWORKERS)
             self.toolbox.register("map", self.pool.map)
         else:
             self.toolbox.register("map", map)
-
 
     def evaluate_population(self, pop):
         invalid_ind = [ind for ind in pop if not ind.fitness.valid]
@@ -79,18 +85,20 @@ class DeapSeaGa:
     def log_generation(self, pop, generation):
         if self.csv_path is None:
             return
-
-        fieldnames = list(pop[0].keys()) + ['fitness', 'generation']
+        
+        decoded_sample = self.decode(pop[0])
+        fieldnames = list(decoded_sample.keys()) + ['fitness', 'generation']
         file_exists = os.path.isfile(self.csv_path)
 
         with open(self.csv_path, 'a', newline='') as csvfile:
             writer = csv.DictWriter(csvfile, fieldnames=fieldnames)
             if not file_exists:
                 writer.writeheader()
-
-            for ind in pop:
-                row = dict(ind)
-                row['fitness'] = ind.fitness.values[0]
+            
+            for bit_ind in pop:
+                decoded = self.decode(bit_ind)
+                row = dict(decoded)
+                row['fitness'] = bit_ind.fitness.values[0]
                 row['generation'] = generation
                 writer.writerow(row)
 
@@ -144,5 +152,6 @@ class DeapSeaGa:
         # Find and return the fittest individual
         fits = [ind.fitness.values[0] for ind in pop]
         best_index = fits.index(min(fits))
-        return pop[best_index], pop[best_index].fitness.values[0]
+        decoded_best = self.decode(pop[best_index])
+        return decoded_best, pop[best_index].fitness.values[0]
         

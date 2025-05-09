@@ -43,5 +43,10 @@ BOUNDS = {
     'b' : (-5., 5.)
 }
 
-ga = ga.DeapSeaGa(objective, BOUNDS, NGEN=6, NPOP=10, NWORKERS=4, PATIENCE=20, TOL=1e-3, csv_path="examples/results.csv")
+BITS = {
+    'a' : 8,
+    'b' : 8
+}
+
+ga = ga.DeapSeaGa(objective, BOUNDS, BITS, NGEN=100, NPOP=10, NWORKERS=4, PATIENCE=30, TOL=1e-3, csv_path="examples/results.csv")
 print(ga.run())
