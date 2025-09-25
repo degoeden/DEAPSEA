@@ -115,10 +115,13 @@ class DeapSeaGa:
                 row['generation'] = generation
                 writer.writerow(row)
 
-    def run(self):
+    def run(self,initial_design=None):
         if self.csv_path and os.path.exists(self.csv_path):
             os.remove(self.csv_path)
         pop = self.toolbox.population(n=self.NPOP)
+        if initial_design is not None:
+            initial_ind = self.encode(initial_design)
+            pop[0] = initial_ind
         best_fitness = float('inf')
 
         # Evaluate the entire population
