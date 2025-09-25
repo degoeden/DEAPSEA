@@ -3,6 +3,7 @@ import random
 from concurrent.futures import ThreadPoolExecutor
 import csv
 import os
+import numpy as np
 
 class DeapSeaGa:
     def __init__(self, objective, BOUNDS, BITS, NPOP=10, CXPB=0.5, MUTPB=0.2, NGEN=40, ELITES_SIZE=1, TOURNAMENT_SIZE = 3, PATIENCE=None, TOL=1e-3, NWORKERS=1, csv_path=None):
@@ -34,6 +35,18 @@ class DeapSeaGa:
             val = low + (high - low) * intval / max_int
             decoded[key] = val
         return decoded
+
+    def encode(self, design_dict):
+        encoded_bits = []
+        for key in self.BOUNDS.keys():
+            low, high = self.BOUNDS[key]
+            b = self.BITS[key]
+            max_int = 2**b - 1
+            val = max(min(design_dict[key], high), low)
+            intval = int(np.round((val - low) / (high - low) * max_int))
+            bitstring = [int(x) for x in f"{intval:0{b}b}"]
+            encoded_bits.extend(bitstring)
+        return creator.Individual(encoded_bits)
 
     def wrapped_objective(self, bit_ind):
         float_ind = self.decode(bit_ind)
