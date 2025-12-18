@@ -6,7 +6,7 @@ import os
 import numpy as np
 
 class DeapSeaGa:
-    def __init__(self, objective, BOUNDS, BITS, NPOP=10, CXPB=0.5, MUTPB=0.2, NGEN=40, ELITES_SIZE=1, TOURNAMENT_SIZE = 3, PATIENCE=None, TOL=1e-3, NWORKERS=1, csv_path=None):
+    def __init__(self, objective, BOUNDS, BITS, NPOP=10, CXPB=0.5, MUTPB=0.2, NGEN=40, ELITES_SIZE=1, TOURNAMENT_SIZE = 3, NIMMIGRANTS = 0, IMMIGRATION_INTERVAL = None, PATIENCE=None, TOL=1e-3, NWORKERS=1, csv_path=None):
         self.objective = objective
         self.BOUNDS = BOUNDS
         self.BITS = BITS
@@ -16,11 +16,16 @@ class DeapSeaGa:
         self.NPOP = NPOP
         self.ELITES_SIZE = ELITES_SIZE
         self.TOURNAMENT_SIZE = TOURNAMENT_SIZE
+        self.NIMMIGRANTS = NIMMIGRANTS
+        self.IMMIGRATION_INTERVAL = IMMIGRATION_INTERVAL
         self.PATIENCE = PATIENCE
         self.TOL = TOL
         self.NWORKERS = NWORKERS
         self.csv_path = csv_path
         self.build_toolbox()
+
+        if self.IMMIGRATION_INTERVAL is None:
+            self.IMMIGRATION_INTERVAL = self.NGEN + 1  # No immigration
 
     def decode(self, ind):
         decoded = {}
@@ -94,6 +99,13 @@ class DeapSeaGa:
                 self.toolbox.mutate(mutant)
                 del mutant.fitness.values
         return offspring
+
+    def immigrate(self, offspring, generation):
+        immigrants = self.toolbox.population(n=self.NIMMIGRANTS)
+        self.evaluate_population(immigrants)
+        self.log_generation(immigrants, generation)
+        offspring[:] = tools.selBest(offspring, len(offspring) - self.NIMMIGRANTS) + immigrants
+        return offspring
     
     def log_generation(self, pop, generation):
         if self.csv_path is None:
@@ -142,6 +154,9 @@ class DeapSeaGa:
             # Log the generation
             self.log_generation(offspring, g)
             
+            if self.NIMMIGRANTS > 0 and (g + 1) % self.IMMIGRATION_INTERVAL == 0:
+                offspring = self.immigrate(offspring, g)
+
             # The population is replaced by the offspring, but keeps elites
             elites = tools.selBest(pop, self.ELITES_SIZE)
             offspring = tools.selBest(offspring, len(offspring) - self.ELITES_SIZE)
